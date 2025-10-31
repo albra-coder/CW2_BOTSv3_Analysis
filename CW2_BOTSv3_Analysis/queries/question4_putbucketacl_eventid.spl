@@ -1,0 +1,5 @@
+index=botsv3 sourcetype=aws:cloudtrail earliest=0
+| search eventName="PutBucketAcl" userIdentity.userName=*bud*
+| head 1
+| fields eventID, eventName, userIdentity.userName, _time
+
