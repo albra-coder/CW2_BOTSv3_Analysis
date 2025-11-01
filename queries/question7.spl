@@ -1,0 +1,3 @@
+index=botsv3 sourcetype=aws:s3:accesslogs frothlywebcode REST.PUT.OBJECT "*.txt"
+| rex field=_raw "PUT\s(?<FileName>[^\s]+)\sHTTP\S+\"\s(?<Status>\d+)"
+| table _time, FileName, Status

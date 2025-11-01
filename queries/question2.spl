@@ -1,0 +1,3 @@
+index=botsv3 sourcetype=aws:cloudtrail
+| search additionalEventData.MFAUsed=* OR userIdentity.sessionContext.attributes.mfaAuthenticated=*
+| stats values(additionalEventData.MFAUsed) AS MFAUsedValues, values(userIdentity.sessionContext.attributes.mfaAuthenticated) AS MFAAuthenticatedValues by eventType

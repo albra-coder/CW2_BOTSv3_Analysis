@@ -1,0 +1,8 @@
+index=botsv3 sourcetype=WinEventLog:*
+| rex "ComputerName=(?<ComputerName>[^\s,;]+)"
+| eval host_fqdn = coalesce(ComputerName, host)
+| dedup host_fqdn
+| table host_fqdn
+
+index=botsv3 sourcetype=winhostmon
+| stats values(OS) by host

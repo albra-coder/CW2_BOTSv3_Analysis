@@ -1,0 +1,372 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{amsmath}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!10},
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    numbers=left,
+    numberstyle=\tiny\color{gray}
+}
+
+\title{COMP3010 Coursework 2: BOTSv3 Security Incident Analysis}
+\author{[Your Name] \\ Student ID: [Your Student ID]}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This report documents a comprehensive security incident analysis conducted using the Boss of the SOC Version 3 (BOTSv3) dataset within a Splunk Security Operations Center (SOC) environment. The investigation identifies critical security misconfigurations, unauthorized access patterns, and endpoint anomalies within Frothly's AWS infrastructure, demonstrating practical SOC analyst capabilities through systematic log analysis and threat investigation.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+\label{sec:introduction}
+
+BOTSv3, or Boss of the SOC (BOTS) Dataset Version 3, is a publicly available, pre-indexed sample security dataset and Capture The Flag (CTF) platform created by Splunk to train cybersecurity professionals. It simulates a realistic security incident within a fictitious brewing company named "Frothly," providing extensive logs including network, endpoint, email, and cloud service data from Amazon AWS and Microsoft Azure environments.
+
+\subsection{Investigation Objectives}
+This analysis addresses eight BOTSv3 questions (Q1-Q8), focusing on:
+\begin{itemize}
+    \item IAM user access auditing and identification
+    \item Multi-factor authentication (MFA) policy monitoring
+    \item Endpoint hardware and configuration analysis
+    \item S3 bucket misconfiguration investigation
+    \item File upload activity analysis
+    \item Windows OS configuration anomalies
+\end{itemize}
+
+\subsection{Scope and Assumptions}
+The investigation analyzes AWS CloudTrail logs, S3 access logs, endpoint monitoring data, and security event logs within the BOTSv3 dataset. All queries utilize the \texttt{botsv3} index with appropriate source type filtering. The analysis assumes pre-indexed data accuracy and follows the cyber kill chain methodology.
+
+\section{SOC Roles \& Incident Handling Reflection}
+\label{sec:soc-reflection}
+
+Security Operations Centers operate in hierarchical tiers: Tier 1 performs initial alert triage, Tier 2 conducts detailed investigations (this exercise), and Tier 3 provides expert-level analysis. Following the NIST Cybersecurity Framework, this investigation progresses through prevention (IAM policies, MFA enforcement), detection (CloudTrail monitoring, endpoint analysis), response (identifying exposed resources), and recovery (access revocation, policy updates). The BOTSv3 questions map directly to these phases, demonstrating systematic cloud security incident investigation.
+
+\section{Installation \& Data Preparation}
+\label{sec:installation}
+
+\subsection{Splunk Installation}
+Splunk Enterprise was deployed using Docker on macOS, providing an isolated, reproducible environment. \textbf{Environment:} Docker Desktop, Splunk latest image, 4GB RAM, 2 CPU cores, ports 8000/8089.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/installation/Docker_Desktop_Logs_And_Running_Container.png}
+    \caption{Splunk Docker container initialization}
+    \label{fig:splunk-install}
+\end{figure}
+
+\subsection{BOTSv3 Dataset Ingestion}
+The BOTSv3 dataset was obtained from \url{https://github.com/splunk/botsv3}. The pre-indexed Splunk app (320MB) was copied into \texttt{/opt/splunk/etc/apps/} and automatically loaded. \textbf{Dataset:} Index \texttt{botsv3}, source types include \texttt{aws:cloudtrail}, \texttt{aws:s3:accesslogs}, \texttt{hardware}, \texttt{winhostmon}, \texttt{symantec:ep:security:file}, time range August 2018.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/installation/Dataset.png}
+    \caption{BOTSv3 dataset app installation}
+    \label{fig:dataset-ingestion}
+\end{figure}
+
+\subsection{Data Validation}
+Data validation confirmed successful ingestion. \textbf{Results:} Successfully indexed and searchable. All source types accessible, time range confirmed.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/installation/sourcetype_verification.png}
+    \caption{Data validation query results}
+    \label{fig:data-validation}
+\end{figure}
+
+\section{Guided Questions Analysis}
+\label{sec:questions}
+
+\subsection{Q1: Identifying IAM Users Accessing AWS Services}
+\textbf{SOC Relevance:} Establishing baseline access patterns for anomaly detection and compliance monitoring.
+
+\textbf{Methodology:} The query filters CloudTrail events to IAM users only by using \texttt{userIdentity.type="IAMUser"}. It then removes duplicate usernames using \texttt{dedup}, sorts them alphabetically, and formats the output as a comma-separated list using \texttt{mvjoin}.
+
+\begin{lstlisting}[language=bash, caption=Q1 Query]
+index=botsv3 sourcetype=aws:cloudtrail userIdentity.type="IAMUser"
+| dedup userIdentity.userName
+| sort userIdentity.userName
+| stats values(userIdentity.userName) AS IAM_Users_List
+| eval IAM_Users_List=mvjoin(IAM_Users_List, ",")
+\end{lstlisting}
+
+\textbf{Answer:} \texttt{bstoll}, \texttt{btun}, \texttt{splunk\_access}, \texttt{web\_admin}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q1_query.png}
+    \caption{Q1 Query in Splunk}
+    \label{fig:q1-query}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q1_results.png}
+    \caption{Q1 Results}
+    \label{fig:q1-results}
+\end{figure}
+
+\subsection{Q2: Identifying AWS API Activity Without MFA}
+\textbf{SOC Relevance:} Detecting API calls without MFA enables policy violation identification.
+
+\textbf{Methodology:} The query searches CloudTrail logs for events containing MFA-related fields. It examines both \texttt{additionalEventData.MFAUsed} and \texttt{userIdentity.sessionContext.attributes.mfaAuthenticated} fields to identify which field can be used to alert on AWS API activity without MFA.
+
+\begin{lstlisting}[language=bash, caption=Q2 Query]
+index=botsv3 sourcetype=aws:cloudtrail
+| search additionalEventData.MFAUsed=* OR userIdentity.sessionContext.attributes.mfaAuthenticated=*
+| stats values(additionalEventData.MFAUsed) AS MFAUsedValues, values(userIdentity.sessionContext.attributes.mfaAuthenticated) AS MFAAuthenticatedValues by eventType
+\end{lstlisting}
+
+\textbf{Answer:} \texttt{userIdentity.sessionContext.attributes.mfaAuthenticated}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q2_query.png}
+    \caption{Q2 Query in Splunk}
+    \label{fig:q2-query}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q2_results.png}
+    \caption{Q2 Results}
+    \label{fig:q2-results}
+\end{figure}
+
+\subsection{Q3: Identifying the Processor Number of Web Servers}
+\textbf{SOC Relevance:} Endpoint hardware information supports asset management and vulnerability assessment.
+
+\textbf{Methodology:} First, listing all sourcetypes reveals various source types available in the dataset. One that stands out is 'hardware'. Examining the hardware sourcetype shows CPU type information. Looking at the CPU types, we can see one value: Intel(R) Xeon(R) CPU E5-2676 v3 @ 2.40GHz, from which we extract the processor number E5-2676.
+
+\begin{lstlisting}[language=bash, caption=Q3 Query]
+# First, list all sourcetypes to identify available source types
+index=botsv3 | stats count by sourcetype
+
+# Then examine hardware sourcetype for CPU information
+# Looking at the CPU types here, we can see one value: Intel(R) Xeon(R) CPU E5-2676 v3 @ 2.40GHz
+index=botsv3 sourcetype=hardware | head 5
+\end{lstlisting}
+
+\textbf{Answer:} \texttt{E5-2676}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q3_query.png}
+    \caption{Q3 Query in Splunk}
+    \label{fig:q3-query}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q3_results.png}
+    \caption{Q3 Results}
+    \label{fig:q3-results}
+\end{figure}
+
+\subsection{Q4: Event ID of Public S3 Bucket Misconfiguration}
+\textbf{SOC Relevance:} S3 buckets that are publicly accessible pose a significant cloud security risk. Identifying the particular API call and event ID allows the SOC to determine whether the exposure was unintentional or malicious.
+
+\textbf{Methodology:} The query searches CloudTrail logs for the PutBucketAcl event, which is the API call that modifies S3 bucket access control lists. By filtering for events where the username is "bstoll" (Bud's username) and examining the eventID field, we can identify the specific event that enabled public access to the S3 bucket.
+
+\begin{lstlisting}[language=bash, caption=Q4 Query]
+index=botsv3 sourcetype=aws:cloudtrail eventName="PutBucketAcl" userIdentity.userName="bstoll"
+| table _time eventName eventID userIdentity.userName requestParameters.* responseElements.*
+| sort _time asc
+\end{lstlisting}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q4_query.png}
+    \caption{Q4 Query in Splunk}
+    \label{fig:q4-query}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q4_results.png}
+    \caption{Q4 Results}
+    \label{fig:q4-results}
+\end{figure}
+
+\subsection{Q5: Identifying Bud's Username}
+\textbf{SOC Relevance:} One of the main responsibilities of SOC is to identify the specific person who made a risky or unauthorised change to the cloud configuration.
+
+\textbf{Methodology:} Using the information from question 4, the query extracts the username from the PutBucketAcl event. The userIdentity.userName field in CloudTrail logs contains the IAM username of the user who performed the action, which is "bstoll".
+
+\begin{lstlisting}[language=bash, caption=Q5 Query]
+index=botsv3 sourcetype=aws:cloudtrail eventName="PutBucketAcl" userIdentity.userName="bstoll"
+| table _time eventName eventID userIdentity.userName requestParameters.* responseElements.*
+| sort _time asc
+\end{lstlisting}
+
+\textbf{Answer:} \texttt{bstoll}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q5_query.png}
+    \caption{Q5 Query in Splunk}
+    \label{fig:q5-query}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q5_results.png}
+    \caption{Q5 Results}
+    \label{fig:q5-results}
+\end{figure}
+
+\subsection{Q6: Public S3 Bucket Name}
+\textbf{SOC Relevance:} Identifying which S3 bucket was made accessible to the public is important for assessing the level of exposure.
+
+\textbf{Methodology:} Using the information from question 4, the query extracts the bucket name from the PutBucketAcl event. The requestParameters.bucketName field in CloudTrail logs contains the name of the S3 bucket that had its ACL modified.
+
+\begin{lstlisting}[language=bash, caption=Q6 Query]
+index=botsv3 sourcetype=aws:cloudtrail eventName="PutBucketAcl" userIdentity.userName="bstoll"
+| table _time eventName eventID userIdentity.userName requestParameters.* responseElements.*
+| sort _time asc
+\end{lstlisting}
+
+\textbf{Answer:} \texttt{frothlywebcode}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q6_query.png}
+    \caption{Q6 Query in Splunk}
+    \label{fig:q6-query}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q6_results.png}
+    \caption{Q6 Results}
+    \label{fig:q6-results}
+\end{figure}
+
+\subsection{Q7: Identifying Uploaded Text File}
+\textbf{SOC Relevance:} Identifying the uploaded file shows how analysts monitor interactions with cloud resources that have been compromised or improperly configured.
+
+\textbf{Methodology:} The query searches the aws:s3:accesslogs sourcetype for events related to the bucket identified in question 6 (frothlywebcode). It filters for successful PUT operations (indicated by HTTP status code 200) and extracts the filename from the request URI using regex.
+
+\begin{lstlisting}[language=bash, caption=Q7 Query]
+index=botsv3 sourcetype=aws:s3:accesslogs frothlywebcode REST.PUT.OBJECT "*.txt"
+| rex field=_raw "PUT\s(?<FileName>[^\s]+)\sHTTP\S+"\s(?<Status>\d+)"
+| table _time, FileName, Status
+\end{lstlisting}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q7_query.png}
+    \caption{Q7 Query in Splunk}
+    \label{fig:q7-query}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q7_results.png}
+    \caption{Q7 Results}
+    \label{fig:q7-results}
+\end{figure}
+
+\subsection{Q8: Identifying FQDN of the Endpoint Running a Different Windows Operating System Edition}
+\textbf{SOC Relevance:} Identifying non-standard configurations supports asset management and security posture assessment.
+
+\textbf{Methodology:} The query searches the winhostmon sourcetype to identify operating system information across all endpoints. It groups hosts by their OS edition and counts how many hosts have each OS edition. This allows us to identify which OS edition appears only once, indicating the outlier endpoint. Then the query extracts the ComputerName field which contains the FQDN.
+
+\begin{lstlisting}[language=bash, caption=Q8 Query Step 1]
+index=botsv3 sourcetype=winhostmon
+| stats values(OS) by host
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash, caption=Q8 Query Step 2]
+index=botsv3 sourcetype=WinEventLog:*
+| rex "ComputerName=(?<ComputerName>[^\s,;]+)"
+| eval host_fqdn = coalesce(ComputerName, host)
+| dedup host_fqdn
+| table host_fqdn
+\end{lstlisting}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q8_query_step1.png}
+    \caption{Q8 Query Step 1 in Splunk}
+    \label{fig:q8-query1}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q8_query_step2.png}
+    \caption{Q8 Query Step 2 in Splunk}
+    \label{fig:q8-query2}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{../screenshots/results/q8_results.png}
+    \caption{Q8 Results}
+    \label{fig:q8-results}
+\end{figure}
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+This investigation successfully analyzed eight security incidents within the BOTSv3 dataset, identifying critical misconfigurations including IAM access patterns, MFA policy violations, endpoint hardware information, S3 bucket exposure, file uploads, and OS configuration anomalies. The analysis demonstrated systematic application of Splunk SIEM capabilities to investigate cloud security events.
+
+\subsection{Key Findings}
+\begin{itemize}
+    \item Four IAM users accessed AWS services, establishing baseline for access monitoring
+    \item MFA policy violations detectable via \texttt{userIdentity.sessionContext.attributes.mfaAuthenticated} field
+    \item Web servers utilize Intel Xeon E5-2676 v3 processors, supporting vulnerability assessment
+    \item S3 bucket \texttt{frothlywebcode} was accidentally exposed, leading to unauthorized file uploads
+    \item Endpoint exhibits non-standard Windows OS edition configuration
+\end{itemize}
+
+\subsection{SOC Strategy Implications}
+Organizations should implement automated monitoring for IAM access patterns, MFA policy violations, endpoint hardware and OS configurations, and account compromise indicators. Regular access reviews and security control assessments are essential. The findings demonstrate that proactive monitoring and rapid incident response capabilities are critical for modern SOC operations.
+
+\section{References}
+\label{sec:references}
+
+\begin{enumerate}
+    \item Splunk Inc., "BOTSv3 Dataset," GitHub Repository, 2023. [Online]. Available: \url{https://github.com/splunk/botsv3}
+    \item Amazon Web Services, "CloudTrail Log File Examples," AWS Documentation, 2023. [Online]. Available: \url{https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-log-file-examples.html}
+    \item NIST, "Computer Security Incident Handling Guide," NIST Special Publication 800-61, Rev. 2, 2012.
+    \item Splunk Inc., "Search Processing Language (SPL) Manual," Splunk Documentation, 2023. [Online]. Available: \url{https://docs.splunk.com/Documentation/Splunk/latest/SearchReference/WhatsInThisManual}
+    \item Amazon Web Services, "S3 Bucket Public Access," AWS Knowledge Center, 2023. [Online]. Available: \url{https://aws.amazon.com/premiumsupport/knowledge-center/s3-bucket-public-access/}
+    \item Splunk Inc., "How To Use CloudTrail Data for Security Operations \& Threat Hunting," Splunk Blog, 2023. [Online]. Available: \url{https://www.splunk.com/en_us/blog/security/cloudtrail-data-security-operations.html} \label{splunk-cloudtrail-blog}
+\end{enumerate}
+
+\section*{Appendix: Generative AI Declaration}
+\label{sec:ai-declaration}
+
+\textbf{Generative AI Tool Usage Declaration}
+
+I declare that I have used generative AI tools in the completion of this coursework as required. AI tools were used for:
+\begin{itemize}
+    \item Query syntax assistance and SPL query optimization
+    \item Understanding Splunk concepts and CloudTrail log structure
+    \item Report structure guidance and technical writing assistance
+\end{itemize}
+
+All analysis, findings, and conclusions are based on my own investigation of the BOTSv3 dataset. AI tools served as learning aids, but all answers, evidence gathering, and analytical insights are my own work.
+
+\end{document}
+

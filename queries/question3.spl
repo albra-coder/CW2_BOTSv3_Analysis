@@ -1,0 +1,6 @@
+# First, list all sourcetypes to identify available source types
+index=botsv3 | stats count by sourcetype
+
+# Then examine hardware sourcetype for CPU information
+# Looking at the CPU types here, we can see one value: Intel(R) Xeon(R) CPU E5-2676 v3 @ 2.40GHz
+index=botsv3 sourcetype=hardware | head 5

@@ -1,0 +1,5 @@
+index=botsv3 sourcetype=aws:cloudtrail userIdentity.type="IAMUser"
+| dedup userIdentity.userName
+| sort userIdentity.userName
+| stats values(userIdentity.userName) AS IAM_Users_List
+| eval IAM_Users_List=mvjoin(IAM_Users_List, ",")
