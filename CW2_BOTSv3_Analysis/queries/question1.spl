@@ -1,0 +1,4 @@
+index=botsv3 sourcetype=aws:cloudtrail
+| stats values(userIdentity.userName) as usernames by eventName
+| where usernames!=""
+| table eventName, usernames
