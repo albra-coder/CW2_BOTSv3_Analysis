@@ -1,0 +1,4 @@
+index=botsv3 sourcetype=aws:cloudtrail
+| search userIdentity.type="IAMUser"
+| where isnull(userIdentity.sessionContext.sessionIssuer.userName) OR userIdentity.sessionContext.sessionIssuer.userName!=""
+| stats count by userIdentity.userName, eventName
