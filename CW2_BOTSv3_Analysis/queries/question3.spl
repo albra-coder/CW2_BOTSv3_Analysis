@@ -1,0 +1,3 @@
+index=botsv3 sourcetype=inventory
+| search asset_type="Server" AND asset_subtype="Web"
+| stats values(processor_count) by host
