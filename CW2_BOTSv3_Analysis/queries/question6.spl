@@ -1,0 +1,3 @@
+index=botsv3 sourcetype=aws:s3:accesslogs
+| search http_status=200 AND operation="REST.GET.OBJECT"
+| stats count by bucket
