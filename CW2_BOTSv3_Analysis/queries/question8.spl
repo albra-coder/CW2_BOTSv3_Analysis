@@ -1,0 +1,2 @@
+index=botsv3 sourcetype=winhostmon
+| stats values(OS) by host
