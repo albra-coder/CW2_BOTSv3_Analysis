@@ -1,3 +1,5 @@
 index=botsv3 sourcetype=aws:s3:accesslogs
 | search http_status=200 AND operation="REST.PUT.OBJECT" AND key="*.txt"
 | stats count by key, bucket
+
+# Performance optimization - 2025-11-09
