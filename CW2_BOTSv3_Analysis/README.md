@@ -10,3 +10,5 @@ This repository contains SPL queries and analysis for the BOTSv3 security incide
 The queries directory contains SPL queries for various investigation questions.
 
 ## Updated on 2025-11-16
+
+## Updated on 2025-11-20
