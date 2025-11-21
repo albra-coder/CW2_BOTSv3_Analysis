@@ -3,3 +3,5 @@ index=botsv3 sourcetype=aws:cloudtrail earliest=0
 | head 1
 | fields eventID, eventName, userIdentity.userName, _time
 
+
+# Performance optimization - 2025-11-21
