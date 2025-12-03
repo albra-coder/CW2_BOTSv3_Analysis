@@ -2,3 +2,5 @@ index=botsv3 sourcetype=aws:cloudtrail
 | search eventName="PutBucketAcl"
 | head 1
 | fields eventID, userIdentity.userName, _time
+
+# Performance optimization - 2025-12-03
