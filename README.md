@@ -2,10 +2,6 @@
 
 ## 2. YouTube Video Walkthrough (max 10 minutes): https://youtu.be/CbfqS-cTNFI?si=BKObxRPkyy-ye1VR
 
-## Image Naming Convention
-
-**Standardized Image Format:** Simply name your screenshots using the format below and place them in the corresponding folders. The README will automatically reference them.
-
 ### For Questions (Q1-Q8):
 - **Query Screenshot:** `screenshots/results/q[1-8]_query.png` (e.g., `q1_query.png` for Q1, `q2_query.png` for Q2)
 - **Results Screenshot:** `screenshots/results/q[1-8]_results.png` (e.g., `q1_results.png` for Q1, `q2_results.png` for Q2)
