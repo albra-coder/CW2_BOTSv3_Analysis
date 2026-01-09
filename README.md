@@ -1,6 +1,6 @@
 # Coursework 2: BOTSv3 Incident Analysis and Presentation
 
-## 2. YouTube Video Walkthrough (max 10 minutes): [VIDEO_PLACEHOLDER]
+## 2. YouTube Video Walkthrough (max 10 minutes): https://youtu.be/CbfqS-cTNFI?si=BKObxRPkyy-ye1VR
 
 ## Image Naming Convention
 
